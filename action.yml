@@ -1,0 +1,35 @@
+name: 'Multi SSH Key Action'
+description: 'Set up multiple SSH keys for accessing private repositories'
+branding:
+  icon: 'lock'  
+  color: 'green'
+inputs:
+  ssh_keys:
+    description: 'Multi-line input of SSH keys. Each line should be in the format: KEY_NAME=SSH_KEY_CONTENT'
+    required: true
+runs:
+  using: "composite"
+  steps:
+    - name: Set up SSH keys
+      shell: bash
+      env:
+        SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+      run: |
+        mkdir -p ~/.ssh
+        ssh-keyscan github.com >> ~/.ssh/known_hosts  
+
+        # Parse multi-line input and create SSH keys
+        echo "${{ inputs.ssh_keys }}" | while IFS='=' read -r key_name key_content; do
+          echo "$key_content" > ~/.ssh/"$key_name"
+          chmod 600 ~/.ssh/"$key_name"
+          echo "Host github.com-$key_name
+            HostName github.com
+            User git
+            IdentityFile ~/.ssh/$key_name" >> ~/.ssh/config
+        done
+        
+        # Start SSH agent and add keys
+        ssh-agent -a $SSH_AUTH_SOCK > /dev/null
+        ssh-add ~/.ssh/* 2>/dev/null
+        
+        echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> $GITHUB_ENV
